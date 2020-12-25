@@ -20,6 +20,7 @@ from geometry_msgs.msg import Twist
 from std_msgs.msg import Float64
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Point
+from knowledge.srv import OracleReq
 
 ## Min delay for transition between NORMAL and SLEEP states
 min_transition_normal_sleep = rospy.get_param("min_transition_normal_sleep")
@@ -112,7 +113,7 @@ class sleep(smach.State):
         goal.target_pose.header.stamp = rospy.Time.now()
         goal.target_pose.pose.position.x = x
         goal.target_pose.pose.position.y = y
-        goal.target_pose.pose.orientation.w = 1.0
+        goal.target_pose.pose.orientation.w = -1.57
 
         # Sends the goal to the action server.
         client.send_goal(goal)
@@ -137,8 +138,8 @@ class sleep(smach.State):
         # function called when exiting from the node, it can be blacking
         rospy.loginfo('Executing state SLEEP')
 
-        result = self.target_pos_client(home_pos.x,home_pos.y)
-        rospy.loginfo(result)
+        self.target_pos_client(home_pos.x,home_pos.y)
+        rospy.loginfo("Robot arrived in home position")
         time.sleep(random.uniform(min_sleep_delay,max_sleep_delay))
         
         return 'wakeUp'
@@ -168,6 +169,16 @@ class track(smach.State):
 
         # position
         self.position = msg.pose.pose.position
+
+    def ask_oracle(self,request):
+
+        rospy.wait_for_service('oracle_req')
+        try:
+            target_pos = rospy.ServiceProxy('oracle_req', OracleReq)
+            resp = target_pos(request)
+            return resp
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: %s",e)
 
     def object_detector_client(self):
 
@@ -231,7 +242,7 @@ class track(smach.State):
             
                  
         userdata.toNormal = True
-        rospy.loginfo(self.position)
+        self.ask_oracle("setPos "+ball_type+" "+str(self.position.x)+" "+str(self.position.y))
         return 'reached'
     
 
@@ -262,6 +273,16 @@ class normal(smach.State):
         """
 
         smach.State.__init__(self,outcomes=['someTimes','ball'],input_keys=['fromTrack'])
+
+    def ask_oracle(self,request):
+
+        rospy.wait_for_service('oracle_req')
+        try:
+            target_pos = rospy.ServiceProxy('oracle_req', OracleReq)
+            resp = target_pos(request)
+            return resp
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: %s",e)
 
     def object_detector_client(self):
 
@@ -314,13 +335,16 @@ class normal(smach.State):
         while(client.get_state() != 3):
             resp = self.object_detector_client()
             ball = resp.object.split()
+            ball_type = ball[0]
             center = float(ball[1])
             radius = float(ball[2])
             if(((center == -1) and (radius == -1))):
                 self.from_track = False
             elif((self.from_track == False) and ((center != -1) and (radius != -1))):
-                client.cancel_all_goals()
-                return None
+                resp = self.ask_oracle("prevDetect "+ball_type)
+                if(resp.location == "False"):
+                    client.cancel_all_goals()
+                    return None
 
         return client.get_result()
 
@@ -349,10 +373,13 @@ class normal(smach.State):
             if(self.from_track == False):
                 resp = self.object_detector_client()
                 ball = resp.object.split()
+                ball_type = ball[0]
                 center = float(ball[1])
                 radius = float(ball[2])
                 if ((center != -1) and (radius != -1)):
-                    return 'ball'
+                    resp = self.ask_oracle("prevDetect "+ball_type)
+                    if(resp.location == "False"):
+                        return 'ball'
             x = random.uniform(neg_map_x,map_x)
             y = random.uniform(neg_map_y,map_y)
             result = self.target_pos_client(x,y)
