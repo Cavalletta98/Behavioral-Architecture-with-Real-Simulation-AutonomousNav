@@ -36,6 +36,10 @@
     <param name="min_dis_ball_delay" type="int" value="1" />
     <param name="max_dis_ball_delay" type="int" value="10" />
 
+    <!-- Person position (must be inside the map) -->
+    <param name="person_pos_x" type="double" value="-7" />
+    <param name="person_pos_y" type="double" value="9.5" />
+
     <!-- Map dimension -->
     <param name="map_x" type="int" value="7" />
     <param name="map_y" type="int" value="7" />
