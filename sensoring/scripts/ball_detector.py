@@ -118,8 +118,11 @@ class image_feature:
         cv2.imshow('window', image_np)
         cv2.waitKey(2)
 
-        lower = {'green':(50, 50, 20),'yellow':(20, 100, 100),'black':(0, 0, 0)}
-        upper = {'green':(70, 255, 255),'yellow':(30, 255, 255),'black':(180, 255, 30)}
+        #'yellow':(20, 100, 100)
+        #'yellow':(30, 255, 255)
+
+        lower = {'green':(50, 50, 20),'black':(0, 0, 0)}
+        upper = {'green':(70, 255, 255),'black':(180, 255, 30)}
 
         if detected == False:       
 

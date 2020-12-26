@@ -39,7 +39,7 @@ class Oracle:
 
         entrance = Location("entrance",False,Point())
         closet = Location("closet",False,Point())
-        living_room = Location("living room",False,Point())
+        living_room = Location("living_room",False,Point())
         kitchen = Location("kitchen",False,Point())
         bathroom = Location("bathroom",False,Point())
         bedroom = Location("bedroom",False,Point())
@@ -72,6 +72,17 @@ class Oracle:
             position = Point(float(request[2]),float(request[3]),0)
             self.house[ball].setPosition(position)
             self.house[ball].setVisited(True)
+        elif(request[0] == "isVisited"):
+            req_location = request[1]
+            for ball, location in self.house.items():
+                if location.getName() == req_location:
+                    req_ball = ball
+                    req_location = location
+                    break
+            resp.location = str(req_location.getVisited())+" "+req_ball
+        elif(request[0] == "getPos"):
+            ball = request[1]
+            resp.location = str(self.house[ball].getPosition().x)+" "+str(self.house[ball].getPosition().y)
 
         return resp
 

@@ -21,6 +21,7 @@ from std_msgs.msg import Float64
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Point
 from knowledge.srv import OracleReq
+from std_msgs.msg import String
 
 ## Min delay for transition between NORMAL and SLEEP states
 min_transition_normal_sleep = rospy.get_param("min_transition_normal_sleep")
@@ -36,6 +37,9 @@ max_transition_play_normal = rospy.get_param("max_transition_play_normal")
 
 ## 2D home position
 home_pos = Point(rospy.get_param("home_pos_x"),rospy.get_param("home_pos_y"),0)
+
+## 2D person position
+person_pos = Point(rospy.get_param("person_pos_x"),rospy.get_param("person_pos_y"),0)
 
 ## Min delay for SLEEP state
 min_sleep_delay = rospy.get_param("min_sleep_delay")
@@ -65,6 +69,107 @@ max_head_delay = rospy.get_param("max_head_delay")
 map_x = rospy.get_param("map_x")
 ## y coordinate of the map
 map_y = rospy.get_param("map_y")
+
+# define state Play
+class play(smach.State):
+
+    def __init__(self):
+        # initialisation function, it should not wait
+
+        """
+            Constrcutor. It inizializes the attribute
+        """
+        smach.State.__init__(self,outcomes=['someTimes'])     
+
+    def ask_oracle(self,request):
+
+        rospy.wait_for_service('oracle_req')
+        try:
+            target_pos = rospy.ServiceProxy('oracle_req', OracleReq)
+            resp = target_pos(request)
+            return resp
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: %s",e)
+
+    def getCommand(self,data):
+
+        """
+            Callback method that received the "play" command and set the attribute
+            play to 1
+            @param data: command message
+            @type data: str
+        """
+
+        location = data.data.split('+')[1]
+        resp = self.ask_oracle("isVisited "+location)
+        resp = resp.location.split()
+        if(resp[0] == "True"):
+            resp = self.ask_oracle("getPos "+resp[1])
+            position = resp.location.split()
+            self.target_pos_client(float(position[0]),float(position[1]))
+            rospy.loginfo("Robot arrived in "+location)
+            time.sleep(random.uniform(min_sleep_delay,max_sleep_delay))
+            self.target_pos_client(person_pos.x,person_pos.y)
+            rospy.loginfo("Robot arrived in person position")
+        else:
+            rospy.loginfo("Location unknown")
+        self.count += 1
+        if self.count == self.transition_value:
+            self.transition = 1
+
+
+    def target_pos_client(self,x, y):
+
+        """
+            Send a goal to the action server of the robot and waits until it reaches the goal.
+
+            @param x: x coordinate of the target position
+            @type x: int
+            @param y: y coordinate of the target position
+            @type y: int
+
+            @returns: the position reached by the robot
+            @rtype: Pose
+
+        """
+        client = actionlib.SimpleActionClient('move_base',MoveBaseAction)
+        client.wait_for_server()
+
+        goal = MoveBaseGoal()
+        goal.target_pose.header.frame_id = "map"
+        goal.target_pose.header.stamp = rospy.Time.now()
+        goal.target_pose.pose.position.x = x
+        goal.target_pose.pose.position.y = y
+        goal.target_pose.pose.orientation.w = -1.57
+
+        # Sends the goal to the action server.
+        client.send_goal(goal)
+
+        client.wait_for_result()
+
+        return client.get_result()
+
+    def execute(self, userdata):
+
+        """
+            It publishes the person position and, after the robot reaches the position, it
+            subsribes to "gesture" topic. At the end, it waits for the state transition
+            @param userdata: used to pass data between states
+            @type userdata: list
+        """
+        self.count = 0
+        self.transition_value = random.randint(min_transition_play_normal,max_transition_play_normal)
+        self.transition = 0
+
+        # function called when exiting from the node, it can be blacking      
+        rospy.loginfo('Executing state PLAY')
+        self.target_pos_client(person_pos.x,person_pos.y)
+        rospy.loginfo("Robot arrived in person position")
+        sub_command = rospy.Subscriber("command", String, self.getCommand)
+        while self.transition == 0:
+            pass
+        sub_command.unregister()
+        return 'someTimes'
                      
 # define state Sleep
 class sleep(smach.State):
@@ -155,7 +260,7 @@ class track(smach.State):
 
         smach.State.__init__(self,outcomes=['reached'],output_keys=['toNormal'])
         self.vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
-        sub_odom = rospy.Subscriber('odom', Odometry, self.clbk_odom)
+        rospy.Subscriber('odom', Odometry, self.clbk_odom)
 
     def clbk_odom(self,msg):
 
@@ -272,7 +377,8 @@ class normal(smach.State):
             Constrcutor
         """
 
-        smach.State.__init__(self,outcomes=['someTimes','ball'],input_keys=['fromTrack'])
+        smach.State.__init__(self,outcomes=['someTimes','ball','play'],input_keys=['fromTrack'])
+        rospy.Subscriber("command", String, self.getCommand)
 
     def ask_oracle(self,request):
 
@@ -283,6 +389,17 @@ class normal(smach.State):
             return resp
         except rospy.ServiceException as e:
             rospy.logerr("Service call failed: %s",e)
+
+    def getCommand(self,data):
+
+        """
+            Callback method that received the "play" command and set the attribute
+            play to 1
+            @param data: command message
+            @type data: str
+        """
+
+        self.play = 1
 
     def object_detector_client(self):
 
@@ -333,6 +450,9 @@ class normal(smach.State):
         #client.wait_for_result()
 
         while(client.get_state() != 3):
+            if self.play == 1:
+                client.cancel_all_goals()
+                return 'play'
             resp = self.object_detector_client()
             ball = resp.object.split()
             ball_type = ball[0]
@@ -367,9 +487,13 @@ class normal(smach.State):
         neg_map_x = map_x*-1
         neg_map_y = map_y*-1
 
+        self.play = 0
+
         self.from_track = userdata.fromTrack
 
         for count in range(0,count_value):
+            if self.play == 1:
+                return 'play'
             if(self.from_track == False):
                 resp = self.object_detector_client()
                 ball = resp.object.split()
@@ -384,6 +508,8 @@ class normal(smach.State):
             y = random.uniform(neg_map_y,map_y)
             result = self.target_pos_client(x,y)
             if (result != None):
+                if(result == "play"):
+                    return 'play'
                 rospy.loginfo("Robot arrived in (%lf,%lf)",x,y)
             else:
                 return 'ball'
@@ -409,10 +535,13 @@ def main():
         # Add states to the container
         smach.StateMachine.add('NORMAL', normal(), 
                                transitions={'someTimes':'SLEEP',
-                                            'ball':'TRACK'},
+                                            'ball':'TRACK',
+                                            'play':'PLAY'},
                                             remapping={'fromTrack':'sm_data'})
         smach.StateMachine.add('SLEEP', sleep(), 
                                transitions={'wakeUp':'NORMAL'})
+        smach.StateMachine.add('PLAY', play(), 
+                               transitions={'someTimes':'NORMAL'})
         smach.StateMachine.add('TRACK', track(), 
                                transitions={'reached':'NORMAL'},
                                remapping={'toNormal':'sm_data'})

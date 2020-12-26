@@ -18,11 +18,7 @@ def command_generator():
 
     while not rospy.is_shutdown():
         command = input('Enter the command: ')
-        rospy.loginfo(command)
         pub.publish(command)
-        location = input('Enter the target location as (goTo+location): ')
-        rospy.loginfo(location)
-        pub.publish(location)
 
 if __name__ == '__main__':
     try:

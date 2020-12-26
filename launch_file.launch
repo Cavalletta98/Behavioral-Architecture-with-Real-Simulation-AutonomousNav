@@ -9,8 +9,8 @@
     <param name="max_delay_ball" type="double" value="10" />
 
     <!-- Min and max delay for transition between PLAY and NORMAL states -->
-    <param name="min_transition_play_normal" type="int" value="80" />
-    <param name="max_transition_play_normal" type="int" value="400" />
+    <param name="min_transition_play_normal" type="int" value="1" />
+    <param name="max_transition_play_normal" type="int" value="10" />
 
     <!-- Min and max delay for transition between NORMAL and SLEEP states -->
     <param name="min_transition_normal_sleep" type="int" value="1" />
@@ -37,8 +37,8 @@
     <param name="max_dis_ball_delay" type="int" value="10" />
 
     <!-- Person position (must be inside the map) -->
-    <param name="person_pos_x" type="double" value="-7" />
-    <param name="person_pos_y" type="double" value="9.5" />
+    <param name="person_pos_x" type="double" value="-5" />
+    <param name="person_pos_y" type="double" value="8" />
 
     <!-- Map dimension -->
     <param name="map_x" type="int" value="7" />
