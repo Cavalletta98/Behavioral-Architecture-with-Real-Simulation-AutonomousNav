@@ -22,6 +22,7 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Point
 from knowledge.srv import OracleReq
 from std_msgs.msg import String
+from sensor_msgs.msg import LaserScan
 
 ## Min delay for transition between NORMAL and SLEEP states
 min_transition_normal_sleep = rospy.get_param("min_transition_normal_sleep")
@@ -91,6 +92,7 @@ class play(smach.State):
         except rospy.ServiceException as e:
             rospy.logerr("Service call failed: %s",e)
 
+
     def getCommand(self,data):
 
         """
@@ -99,7 +101,6 @@ class play(smach.State):
             @param data: command message
             @type data: str
         """
-
         location = data.data.split('+')[1]
         resp = self.ask_oracle("isVisited "+location)
         resp = resp.location.split()
@@ -260,7 +261,7 @@ class track(smach.State):
 
         smach.State.__init__(self,outcomes=['reached'],output_keys=['toNormal'])
         self.vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
-        rospy.Subscriber('odom', Odometry, self.clbk_odom)
+        rospy.Subscriber('odom', Odometry, self.clbk_odom)    
 
     def clbk_odom(self,msg):
 
@@ -275,6 +276,16 @@ class track(smach.State):
         # position
         self.position = msg.pose.pose.position
 
+    def clbk_laser(self,msg):
+        if(msg.ranges[0]< 0.5):
+            self.vel.linear.z = -0.001
+            self.from_clbk = 1
+        elif(msg.ranges[719]<0.5):
+           self.vel.linear.z = 0.001
+           self.from_clbk = 0
+        else:
+            self.from_clbk = 0
+            
     def ask_oracle(self,request):
 
         rospy.wait_for_service('oracle_req')
@@ -318,11 +329,15 @@ class track(smach.State):
         """
         rospy.loginfo('Executing state TRACK')
 
+        self.from_clbk = 0
+        self.sub_scan = rospy.Subscriber('scan', LaserScan, self.clbk_laser)
+
         resp = self.object_detector_client()
         ball = resp.object.split()
         ball_type = ball[0]
         center = float(ball[1])
         radius = float(ball[2])
+        self.vel = Twist()
         
         while(radius <= 100):
 
@@ -332,22 +347,24 @@ class track(smach.State):
             center = float(ball[1])
             radius = float(ball[2])
 
-            if((radius == -1) and (center == -1)):
-                userdata.toNormal = False
-                return 'reached'
-            elif(radius > 10):
-                vel = Twist()
-                vel.angular.z = -0.003*(center-400)
-                vel.linear.x = -0.007*(radius-110)
-                self.vel_pub.publish(vel)
-            elif(radius < 10):
-                vel = Twist()
-                vel.linear.x = 0.09
-                self.vel_pub.publish(vel)
+            if(self.from_clbk == 0):
+                if((radius == -1) and (center == -1)):
+                    userdata.toNormal = False
+                    self.sub_scan.unregister()
+                    return 'reached'
+                elif(radius > 10):
+                    self.vel.angular.z = -0.003*(center-400)
+                    self.vel.linear.x = -0.007*(radius-110)
+                elif(radius < 10):
+                    self.vel.angular.z = 0
+                    self.vel.linear.x = 0.09
+            
+            self.vel_pub.publish(self.vel)
             
                  
         userdata.toNormal = True
         self.ask_oracle("setPos "+ball_type+" "+str(self.position.x)+" "+str(self.position.y))
+        self.sub_scan.unregister()
         return 'reached'
     
 

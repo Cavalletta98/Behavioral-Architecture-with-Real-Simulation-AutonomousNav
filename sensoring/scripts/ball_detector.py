@@ -118,18 +118,17 @@ class image_feature:
         cv2.imshow('window', image_np)
         cv2.waitKey(2)
 
-        #'yellow':(20, 100, 100)
-        #'yellow':(30, 255, 255)
+        lower = {'black':(0, 0, 0),'red':(0, 50, 50),'yellow':(25, 50, 50),'green':(50, 50, 50),'blue':(100, 50, 50),'magenta':(125, 50, 50)}
+        upper = {'black':(5,50,50),'red':(5, 255, 255),'yellow':(35, 255, 255),'green':(70, 255, 255),'blue':(130, 255, 255),'magenta':(150, 255, 255)}
 
-        lower = {'green':(50, 50, 20),'black':(0, 0, 0)}
-        upper = {'green':(70, 255, 255),'black':(180, 255, 30)}
+        blurred = cv2.GaussianBlur(image_np, (11, 11), 0)
+        hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
 
-        if detected == False:       
+        if detected == False:
+
+            
 
             for key, value in upper.items():
-
-                blurred = cv2.GaussianBlur(image_np, (11, 11), 0)
-                hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
 
                 mask = cv2.inRange(hsv, lower[key], upper[key])
                 mask = cv2.erode(mask, None, iterations=2)
@@ -145,9 +144,6 @@ class image_feature:
                     detected = True
                     break
         else:
-
-            blurred = cv2.GaussianBlur(image_np, (11, 11), 0)
-            hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
 
             mask = cv2.inRange(hsv, lower[self.type], upper[self.type])
             mask = cv2.erode(mask, None, iterations=2)

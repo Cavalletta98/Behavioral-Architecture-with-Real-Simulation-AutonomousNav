@@ -49,7 +49,7 @@ class Oracle:
             "red": closet,
             "green": living_room,
             "yellow": kitchen,
-            "orange": bathroom,
+            "magenta": bathroom,
             "black": bedroom,
         }
 
