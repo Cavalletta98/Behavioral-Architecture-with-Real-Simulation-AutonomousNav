@@ -13,6 +13,8 @@ import smach_ros
 import time
 import random
 import actionlib
+import roslaunch
+
 
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from sensoring.srv import DetectImage
@@ -48,24 +50,6 @@ min_sleep_delay = rospy.get_param("min_sleep_delay")
 ## Max delay for SLEEP state
 max_sleep_delay = rospy.get_param("max_sleep_delay")
 
-## Min delay for mantaining 45° clockwise the head
-min_clock_head_delay = rospy.get_param("min_clock_head_delay")
-
-## Max delay for mantaining 45° clockwise the head
-max_clock_head_delay = rospy.get_param("max_clock_head_delay")
-
-## Min delay for mantaining 45° counterclockwise the head
-min_countclock_head_delay = rospy.get_param("min_countclock_head_delay")
-
-## Max delay for mantaining 45° counterclockwise the head
-max_countclock_head_delay = rospy.get_param("max_countclock_head_delay")
-
-## Min delay for mantaining 0° the head
-min_head_delay = rospy.get_param("min_head_delay")
-
-## Max delay for mantaining 0° the head
-max_head_delay = rospy.get_param("max_head_delay")
-
 ## x coordinate of the map
 map_x = rospy.get_param("map_x")
 ## y coordinate of the map
@@ -80,7 +64,7 @@ class play(smach.State):
         """
             Constrcutor. It inizializes the attribute
         """
-        smach.State.__init__(self,outcomes=['someTimes'])     
+        smach.State.__init__(self,outcomes=['someTimes','unknow'],output_keys=['ballTypePlay'])     
 
     def ask_oracle(self,request):
 
@@ -104,8 +88,9 @@ class play(smach.State):
         location = data.data.split('+')[1]
         resp = self.ask_oracle("isVisited "+location)
         resp = resp.location.split()
+        self.ball_type = resp[1]
         if(resp[0] == "True"):
-            resp = self.ask_oracle("getPos "+resp[1])
+            resp = self.ask_oracle("getPos "+self.ball_type)
             position = resp.location.split()
             self.target_pos_client(float(position[0]),float(position[1]))
             rospy.loginfo("Robot arrived in "+location)
@@ -113,7 +98,7 @@ class play(smach.State):
             self.target_pos_client(person_pos.x,person_pos.y)
             rospy.loginfo("Robot arrived in person position")
         else:
-            rospy.loginfo("Location unknown")
+            self.goTo = True           
         self.count += 1
         if self.count == self.transition_value:
             self.transition = 1
@@ -161,16 +146,119 @@ class play(smach.State):
         self.count = 0
         self.transition_value = random.randint(min_transition_play_normal,max_transition_play_normal)
         self.transition = 0
+        self.goTo = False
 
         # function called when exiting from the node, it can be blacking      
         rospy.loginfo('Executing state PLAY')
         self.target_pos_client(person_pos.x,person_pos.y)
         rospy.loginfo("Robot arrived in person position")
         sub_command = rospy.Subscriber("command", String, self.getCommand)
-        while self.transition == 0:
+        while self.transition == 0 and self.goTo == False:
             pass
         sub_command.unregister()
-        return 'someTimes'
+        if self.goTo == True:
+            userdata.ballTypePlay = self.ball_type
+            return 'unknow'
+        else:
+            return 'someTimes'
+
+# define state Find
+class find(smach.State):
+
+    """
+        A class used to represent the NORMAL behaviour
+        of the robot
+
+        Methods
+        -----
+        object_detector_client():
+            Makes a request to detector server and wait for the response
+        target_pos_client(x,y)
+            Send a goal to the action server of the robot and waits until it reaches the goal.
+            While it is waiting, if there is the ball, it stops the robot and return None
+        execute(userdata)
+            It checks if there is the ball, otherwise it will generate a random goal (x and y)
+            for the robot. If there is the ball, it switches to the PLAY state.
+            After some times, it switches to the SLEEP state
+    """
+
+    def __init__(self):
+
+        """
+            Constrcutor
+        """
+
+        smach.State.__init__(self,outcomes=['someTimes','ball',],input_keys=['ballTypeFromPlay'],output_keys=['ballType'])
+
+    def ask_oracle(self,request):
+
+        rospy.wait_for_service('oracle_req')
+        try:
+            target_pos = rospy.ServiceProxy('oracle_req', OracleReq)
+            resp = target_pos(request)
+            return resp
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: %s",e)
+
+    def object_detector_client(self):
+
+        """
+            Makes a request to detector server and wait for the response
+
+            @returns: radius and center of the ball
+            @rtyper: string
+
+        """
+
+        rospy.wait_for_service('detect_image')
+        try:
+            detect_obj_serv = rospy.ServiceProxy('detect_image', DetectImage)
+            resp = detect_obj_serv()
+            return resp
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: %s",e)
+    
+
+    def execute(self, userdata):
+
+        """
+            It checks if there is the ball, otherwise it will generate a random goal (x and y)
+            for the robot. If there is the ball, it switches to the PLAY state.
+            After some times, it switches to the SLEEP state
+
+            @param userdata: used to pass data bejoint_state = tween states
+            @type userdata: list
+
+            @returns: transition value
+            @rtype: String
+        """
+        rospy.loginfo('Executing state FIND')
+
+        count_value = random.randint(min_transition_normal_sleep,max_transition_normal_sleep)
+
+        uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
+        roslaunch.configure_logging(uuid)
+        launch = roslaunch.parent.ROSLaunchParent(uuid, ["/home/simone/catkin_ws/src/Behavioral-Architecture-with-Real-Simulation-AutonomousNav/explore/launch/explore.launch"])
+        launch.start()
+
+
+        while True:
+            resp = self.object_detector_client()
+            ball = resp.object.split()
+            ball_type = ball[0]
+            center = float(ball[1])
+            radius = float(ball[2])
+            if ((center != -1) and (radius != -1)):
+                resp = self.ask_oracle("prevDetect "+ball_type)
+                if(resp.location == "False"):
+                    launch.shutdown()
+                    break
+
+        userdata.ballType = userdata.ballTypeFromPlay
+        return 'ball'
+
+        #os.system("rosnode kill explore")
+        #return 'someTimes'
                      
 # define state Sleep
 class sleep(smach.State):
@@ -259,7 +347,7 @@ class track(smach.State):
             Constrcutor
         """
 
-        smach.State.__init__(self,outcomes=['reached'],output_keys=['toNormal'])
+        smach.State.__init__(self,outcomes=['reached','reachedPlay','notRequest'],output_keys=['toNormal'],input_keys=['ballType'])
         self.vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
         rospy.Subscriber('odom', Odometry, self.clbk_odom)    
 
@@ -279,12 +367,12 @@ class track(smach.State):
     def clbk_laser(self,msg):
         if(msg.ranges[0]< 0.5):
             self.vel.linear.z = -0.001
-            self.from_clbk = 1
+            #self.from_clbk = 1
         elif(msg.ranges[719]<0.5):
            self.vel.linear.z = 0.001
-           self.from_clbk = 0
-        else:
-            self.from_clbk = 0
+           #self.from_clbk = 1
+        #else:
+            #self.from_clbk = 0
             
     def ask_oracle(self,request):
 
@@ -329,15 +417,15 @@ class track(smach.State):
         """
         rospy.loginfo('Executing state TRACK')
 
-        self.from_clbk = 0
+        #self.from_clbk = 0
+        self.vel = Twist()
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.clbk_laser)
 
         resp = self.object_detector_client()
         ball = resp.object.split()
         ball_type = ball[0]
         center = float(ball[1])
-        radius = float(ball[2])
-        self.vel = Twist()
+        radius = float(ball[2]) 
         
         while(radius <= 100):
 
@@ -347,25 +435,32 @@ class track(smach.State):
             center = float(ball[1])
             radius = float(ball[2])
 
-            if(self.from_clbk == 0):
-                if((radius == -1) and (center == -1)):
-                    userdata.toNormal = False
-                    self.sub_scan.unregister()
-                    return 'reached'
-                elif(radius > 10):
-                    self.vel.angular.z = -0.003*(center-400)
-                    self.vel.linear.x = -0.007*(radius-110)
-                elif(radius < 10):
-                    self.vel.angular.z = 0
-                    self.vel.linear.x = 0.09
+            #if(self.from_clbk == 0):
+            if((radius == -1) and (center == -1)):
+                userdata.toNormal = False
+                self.sub_scan.unregister()
+                return 'reached'
+            elif(radius > 10):
+                self.vel.angular.z = -0.003*(center-400)
+                self.vel.linear.x = -0.007*(radius-110)
+            elif(radius < 10):
+                self.vel.angular.z = 0
+                self.vel.linear.x = 0.09
             
             self.vel_pub.publish(self.vel)
             
-                 
-        userdata.toNormal = True
+                   
         self.ask_oracle("setPos "+ball_type+" "+str(self.position.x)+" "+str(self.position.y))
         self.sub_scan.unregister()
-        return 'reached'
+        rospy.loginfo(userdata.ballType)
+        if(userdata.ballType != None):
+            if(userdata.ballType == ball_type):
+                return 'reachedPlay'
+            else:
+                return 'notRequest'
+        else:
+            userdata.toNormal = True
+            return 'reached'
     
 
 # define state Normal
@@ -470,6 +565,10 @@ class normal(smach.State):
             if self.play == 1:
                 client.cancel_all_goals()
                 return 'play'
+            if(client.get_state()== 4):
+                rospy.loginfo("Position unreachable")
+                client.cancel_all_goals()
+                return None
             resp = self.object_detector_client()
             ball = resp.object.split()
             ball_type = ball[0]
@@ -558,10 +657,21 @@ def main():
         smach.StateMachine.add('SLEEP', sleep(), 
                                transitions={'wakeUp':'NORMAL'})
         smach.StateMachine.add('PLAY', play(), 
-                               transitions={'someTimes':'NORMAL'})
+                               transitions={'someTimes':'NORMAL',
+                                            'unknow':'FIND'},
+                                            remapping={'ballTypePlay':'sm_data',
+                                                       'fromTrack':'sm_data'})
         smach.StateMachine.add('TRACK', track(), 
-                               transitions={'reached':'NORMAL'},
-                               remapping={'toNormal':'sm_data'})
+                               transitions={'reached':'NORMAL',
+                                            'reachedPlay':'PLAY',
+                                            'notRequest':'FIND'},
+                               remapping={'toNormal':'sm_data',
+                                          'ballType':'sm_data'})
+        smach.StateMachine.add('FIND', find(), 
+                               transitions={'someTimes':'PLAY',
+                                            'ball':'TRACK'},
+                               remapping={'ballType':'sm_data',
+                                          'ballTypeFromPlay':'sm_data'})
         
     # Create and start the introspection server for visualization
     sis = smach_ros.IntrospectionServer('server_name', sm, '/SM_ROOT')

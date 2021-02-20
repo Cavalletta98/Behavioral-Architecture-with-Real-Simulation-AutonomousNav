@@ -126,8 +126,6 @@ class image_feature:
 
         if detected == False:
 
-            
-
             for key, value in upper.items():
 
                 mask = cv2.inRange(hsv, lower[key], upper[key])
