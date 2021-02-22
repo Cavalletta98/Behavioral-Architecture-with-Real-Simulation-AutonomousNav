@@ -16,6 +16,7 @@ import rospy
 
 from sensor_msgs.msg import CompressedImage
 from sensoring.srv import DetectImage,DetectImageResponse
+from knowledge.srv import OracleReq
 
 ## Variable for logging purpose
 VERBOSE = False
@@ -100,6 +101,16 @@ class image_feature:
 
         return self.type
 
+    def ask_oracle(self,request):
+
+        rospy.wait_for_service('oracle_req')
+        try:
+            target_pos = rospy.ServiceProxy('oracle_req', OracleReq)
+            resp = target_pos(request)
+            return resp
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: %s",e)
+
     def callback(self, ros_data):
         
         '''
@@ -137,10 +148,12 @@ class image_feature:
                 cnts = imutils.grab_contours(cnts)
 
                 if len(cnts) > 0:
-                    self.type = key
-                    rospy.loginfo(key)
-                    detected = True
-                    break
+                    #rospy.loginfo(key)
+                    resp = self.ask_oracle("prevDetect "+key)
+                    if(resp.location == "False"):
+                        self.type = key
+                        detected = True
+                        break
         else:
 
             mask = cv2.inRange(hsv, lower[self.type], upper[self.type])
@@ -154,6 +167,7 @@ class image_feature:
         center = None
         # only proceed if at least one contour was found
         if len(cnts) > 0:
+
             # find the largest contour in the mask, then use
             # it to compute the minimum enclosing circle and
             # centroid
@@ -169,9 +183,9 @@ class image_feature:
                 cv2.circle(image_np, (int(x), int(y)), int(radius),
                            (0, 255, 255), 2)
                 cv2.circle(image_np, center, 5, (0, 0, 255), -1)
-
-            self.resp_center = center[0]
-            self.resp_radius = radius
+            
+                self.resp_center = center[0]
+                self.resp_radius = radius
 
         else:
             self.resp_center = -1

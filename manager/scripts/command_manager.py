@@ -92,10 +92,12 @@ class play(smach.State):
         if(resp[0] == "True"):
             resp = self.ask_oracle("getPos "+self.ball_type)
             position = resp.location.split()
-            self.target_pos_client(float(position[0]),float(position[1]))
+            while(self.target_pos_client(float(position[0]),float(position[1])) == None):
+                pass
             rospy.loginfo("Robot arrived in "+location)
             time.sleep(random.uniform(min_sleep_delay,max_sleep_delay))
-            self.target_pos_client(person_pos.x,person_pos.y)
+            while(self.target_pos_client(person_pos.x,person_pos.y) == None):
+                pass
             rospy.loginfo("Robot arrived in person position")
         else:
             self.goTo = True           
@@ -131,7 +133,11 @@ class play(smach.State):
         # Sends the goal to the action server.
         client.send_goal(goal)
 
-        client.wait_for_result()
+        while(client.get_state() != 3):
+            if(client.get_state()== 4):
+                rospy.loginfo("Plan aborted")
+                client.cancel_all_goals()
+                return None
 
         return client.get_result()
 
@@ -150,7 +156,8 @@ class play(smach.State):
 
         # function called when exiting from the node, it can be blacking      
         rospy.loginfo('Executing state PLAY')
-        self.target_pos_client(person_pos.x,person_pos.y)
+        while(self.target_pos_client(person_pos.x,person_pos.y) == None):
+            pass
         rospy.loginfo("Robot arrived in person position")
         sub_command = rospy.Subscriber("command", String, self.getCommand)
         while self.transition == 0 and self.goTo == False:
@@ -190,16 +197,6 @@ class find(smach.State):
 
         smach.State.__init__(self,outcomes=['someTimes','ball',],input_keys=['ballTypeFromPlay'],output_keys=['ballType'])
 
-    def ask_oracle(self,request):
-
-        rospy.wait_for_service('oracle_req')
-        try:
-            target_pos = rospy.ServiceProxy('oracle_req', OracleReq)
-            resp = target_pos(request)
-            return resp
-        except rospy.ServiceException as e:
-            rospy.logerr("Service call failed: %s",e)
-
     def object_detector_client(self):
 
         """
@@ -234,32 +231,26 @@ class find(smach.State):
         """
         rospy.loginfo('Executing state FIND')
 
-        count_value = random.randint(min_transition_normal_sleep,max_transition_normal_sleep)
-
         uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
         roslaunch.configure_logging(uuid)
         launch = roslaunch.parent.ROSLaunchParent(uuid, ["/home/simone/catkin_ws/src/Behavioral-Architecture-with-Real-Simulation-AutonomousNav/explore/launch/explore.launch"])
         launch.start()
-
+        start = rospy.get_time()
 
         while True:
             resp = self.object_detector_client()
             ball = resp.object.split()
-            ball_type = ball[0]
             center = float(ball[1])
             radius = float(ball[2])
+            now = rospy.get_time()
             if ((center != -1) and (radius != -1)):
-                resp = self.ask_oracle("prevDetect "+ball_type)
-                if(resp.location == "False"):
-                    launch.shutdown()
-                    break
-
-        userdata.ballType = userdata.ballTypeFromPlay
-        return 'ball'
-
-        #os.system("rosnode kill explore")
-        #return 'someTimes'
-                     
+                launch.shutdown()
+                userdata.ballType = userdata.ballTypeFromPlay
+                return 'ball'
+            elif ((now-start) >= 60*2):
+                launch.shutdown()
+                return 'someTimes'
+                   
 # define state Sleep
 class sleep(smach.State):
 
@@ -312,7 +303,11 @@ class sleep(smach.State):
         # Sends the goal to the action server.
         client.send_goal(goal)
 
-        client.wait_for_result()
+        while(client.get_state() != 3):
+            if(client.get_state()== 4):
+                rospy.loginfo("Plan aborted")
+                client.cancel_all_goals()
+                return None
 
         return client.get_result()
         
@@ -332,7 +327,8 @@ class sleep(smach.State):
         # function called when exiting from the node, it can be blacking
         rospy.loginfo('Executing state SLEEP')
 
-        self.target_pos_client(home_pos.x,home_pos.y)
+        while(self.target_pos_client(home_pos.x,home_pos.y) == None):
+            pass
         rospy.loginfo("Robot arrived in home position")
         time.sleep(random.uniform(min_sleep_delay,max_sleep_delay))
         
@@ -347,7 +343,7 @@ class track(smach.State):
             Constrcutor
         """
 
-        smach.State.__init__(self,outcomes=['reached','reachedPlay','notRequest'],output_keys=['toNormal'],input_keys=['ballType'])
+        smach.State.__init__(self,outcomes=['reached','reachedPlay','notRequest'],input_keys=['ballType'],output_keys=['toNormal'])
         self.vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
         rospy.Subscriber('odom', Odometry, self.clbk_odom)    
 
@@ -367,12 +363,12 @@ class track(smach.State):
     def clbk_laser(self,msg):
         if(msg.ranges[0]< 0.5):
             self.vel.linear.z = -0.001
-            #self.from_clbk = 1
         elif(msg.ranges[719]<0.5):
            self.vel.linear.z = 0.001
-           #self.from_clbk = 1
-        #else:
-            #self.from_clbk = 0
+        elif(msg.ranges[360]<0.5):
+            self.vel.angular.z = 0
+            self.vel.linear.x = 0.09
+
             
     def ask_oracle(self,request):
 
@@ -417,7 +413,6 @@ class track(smach.State):
         """
         rospy.loginfo('Executing state TRACK')
 
-        #self.from_clbk = 0
         self.vel = Twist()
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.clbk_laser)
 
@@ -435,25 +430,20 @@ class track(smach.State):
             center = float(ball[1])
             radius = float(ball[2])
 
-            #if(self.from_clbk == 0):
-            if((radius == -1) and (center == -1)):
-                userdata.toNormal = False
-                self.sub_scan.unregister()
-                return 'reached'
-            elif(radius > 10):
-                self.vel.angular.z = -0.003*(center-400)
-                self.vel.linear.x = -0.007*(radius-110)
-            elif(radius < 10):
-                self.vel.angular.z = 0
-                self.vel.linear.x = 0.09
+            if((radius != -1) and (center != -1)):
+                if(radius > 10):
+                    self.vel.angular.z = -0.003*(center-400)
+                    self.vel.linear.x = -0.007*(radius-110)
+                elif(radius < 10):
+                    self.vel.angular.z = 0
+                    self.vel.linear.x = 0.09
             
             self.vel_pub.publish(self.vel)
-            
-                   
+                              
         self.ask_oracle("setPos "+ball_type+" "+str(self.position.x)+" "+str(self.position.y))
         self.sub_scan.unregister()
         rospy.loginfo(userdata.ballType)
-        if(userdata.ballType != None):
+        if(userdata.ballType != "ND"):
             if(userdata.ballType == ball_type):
                 return 'reachedPlay'
             else:
@@ -491,16 +481,6 @@ class normal(smach.State):
 
         smach.State.__init__(self,outcomes=['someTimes','ball','play'],input_keys=['fromTrack'])
         rospy.Subscriber("command", String, self.getCommand)
-
-    def ask_oracle(self,request):
-
-        rospy.wait_for_service('oracle_req')
-        try:
-            target_pos = rospy.ServiceProxy('oracle_req', OracleReq)
-            resp = target_pos(request)
-            return resp
-        except rospy.ServiceException as e:
-            rospy.logerr("Service call failed: %s",e)
 
     def getCommand(self,data):
 
@@ -571,16 +551,13 @@ class normal(smach.State):
                 return None
             resp = self.object_detector_client()
             ball = resp.object.split()
-            ball_type = ball[0]
             center = float(ball[1])
             radius = float(ball[2])
-            if(((center == -1) and (radius == -1))):
+            if((center == -1) and (radius == -1)):
                 self.from_track = False
-            elif((self.from_track == False) and ((center != -1) and (radius != -1))):
-                resp = self.ask_oracle("prevDetect "+ball_type)
-                if(resp.location == "False"):
-                    client.cancel_all_goals()
-                    return None
+            if((self.from_track == False) and (center != -1) and (radius != -1)):
+                client.cancel_all_goals()
+                return 'ball'
 
         return client.get_result()
 
@@ -604,7 +581,6 @@ class normal(smach.State):
         neg_map_y = map_y*-1
 
         self.play = 0
-
         self.from_track = userdata.fromTrack
 
         for count in range(0,count_value):
@@ -613,22 +589,19 @@ class normal(smach.State):
             if(self.from_track == False):
                 resp = self.object_detector_client()
                 ball = resp.object.split()
-                ball_type = ball[0]
                 center = float(ball[1])
                 radius = float(ball[2])
                 if ((center != -1) and (radius != -1)):
-                    resp = self.ask_oracle("prevDetect "+ball_type)
-                    if(resp.location == "False"):
-                        return 'ball'
+                    return 'ball'
             x = random.uniform(neg_map_x,map_x)
             y = random.uniform(neg_map_y,map_y)
             result = self.target_pos_client(x,y)
             if (result != None):
                 if(result == "play"):
                     return 'play'
+                elif(result == "ball"):
+                    return 'ball'
                 rospy.loginfo("Robot arrived in (%lf,%lf)",x,y)
-            else:
-                return 'ball'
 
         return 'someTimes'
 
@@ -645,6 +618,7 @@ def main():
     # Create a SMACH state machine
     sm = smach.StateMachine(outcomes=['container_interface'])
     sm.userdata.sm_data = False
+    sm.userdata.sm_ball = "ND"
 
     # Open the container
     with sm:
@@ -659,18 +633,17 @@ def main():
         smach.StateMachine.add('PLAY', play(), 
                                transitions={'someTimes':'NORMAL',
                                             'unknow':'FIND'},
-                                            remapping={'ballTypePlay':'sm_data',
-                                                       'fromTrack':'sm_data'})
+                                            remapping={'ballTypePlay':'sm_data'})
         smach.StateMachine.add('TRACK', track(), 
                                transitions={'reached':'NORMAL',
                                             'reachedPlay':'PLAY',
                                             'notRequest':'FIND'},
-                               remapping={'toNormal':'sm_data',
-                                          'ballType':'sm_data'})
+                               remapping={'ballType':'sm_ball',
+                                          'toNormal':'sm_data'})
         smach.StateMachine.add('FIND', find(), 
                                transitions={'someTimes':'PLAY',
                                             'ball':'TRACK'},
-                               remapping={'ballType':'sm_data',
+                               remapping={'ballType':'sm_ball',
                                           'ballTypeFromPlay':'sm_data'})
         
     # Create and start the introspection server for visualization
