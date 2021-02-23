@@ -85,25 +85,26 @@ class play(smach.State):
             @param data: command message
             @type data: str
         """
-        location = data.data.split('+')[1]
-        resp = self.ask_oracle("isVisited "+location)
-        resp = resp.location.split()
-        self.ball_type = resp[1]
-        if(resp[0] == "True"):
-            resp = self.ask_oracle("getPos "+self.ball_type)
-            position = resp.location.split()
-            while(self.target_pos_client(float(position[0]),float(position[1])) == None):
-                pass
-            rospy.loginfo("Robot arrived in "+location)
-            time.sleep(random.uniform(min_sleep_delay,max_sleep_delay))
-            while(self.target_pos_client(person_pos.x,person_pos.y) == None):
-                pass
-            rospy.loginfo("Robot arrived in person position")
-        else:
-            self.goTo = True           
-        self.count += 1
-        if self.count == self.transition_value:
-            self.transition = 1
+        if(data.data != "play"):
+            location = data.data.split('+')[1]
+            resp = self.ask_oracle("isVisited "+location)
+            resp = resp.location.split()
+            self.ball_type = resp[1]
+            if(resp[0] == "True"):
+                resp = self.ask_oracle("getPos "+self.ball_type)
+                position = resp.location.split()
+                while(self.target_pos_client(float(position[0]),float(position[1])) == None):
+                    pass
+                rospy.loginfo("Robot arrived in "+location)
+                time.sleep(random.uniform(min_sleep_delay,max_sleep_delay))
+                while(self.target_pos_client(person_pos.x,person_pos.y) == None):
+                    pass
+                rospy.loginfo("Robot arrived in person position")
+            else:
+                self.goTo = True           
+            self.count += 1
+            if self.count == self.transition_value:
+                self.transition = 1
 
 
     def target_pos_client(self,x, y):
@@ -195,7 +196,7 @@ class find(smach.State):
             Constrcutor
         """
 
-        smach.State.__init__(self,outcomes=['someTimes','ball',],input_keys=['ballTypeFromPlay'],output_keys=['ballType'])
+        smach.State.__init__(self,outcomes=['someTimes','ball',],input_keys=['ballTypeFromPlay','fromTrack'],output_keys=['ballType'])
 
     def object_detector_client(self):
 
@@ -236,6 +237,7 @@ class find(smach.State):
         launch = roslaunch.parent.ROSLaunchParent(uuid, ["/home/simone/catkin_ws/src/Behavioral-Architecture-with-Real-Simulation-AutonomousNav/explore/launch/explore.launch"])
         launch.start()
         start = rospy.get_time()
+        self.from_track = userdata.fromTrack
 
         while True:
             resp = self.object_detector_client()
@@ -243,11 +245,13 @@ class find(smach.State):
             center = float(ball[1])
             radius = float(ball[2])
             now = rospy.get_time()
-            if ((center != -1) and (radius != -1)):
+            if((self.from_track == True) and (center == -1) and (radius == -1)):
+                self.from_track = False
+            elif ((self.from_track == False) and (center != -1) and (radius != -1)):
                 launch.shutdown()
                 userdata.ballType = userdata.ballTypeFromPlay
                 return 'ball'
-            elif ((now-start) >= 60*2):
+            if ((now-start) >= 60*2):
                 launch.shutdown()
                 return 'someTimes'
                    
@@ -343,7 +347,7 @@ class track(smach.State):
             Constrcutor
         """
 
-        smach.State.__init__(self,outcomes=['reached','reachedPlay','notRequest'],input_keys=['ballType'],output_keys=['toNormal'])
+        smach.State.__init__(self,outcomes=['reached','reachedPlay','notRequest'],input_keys=['ballType'],output_keys=['toNormal','toFind'])
         self.vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
         rospy.Subscriber('odom', Odometry, self.clbk_odom)    
 
@@ -447,6 +451,7 @@ class track(smach.State):
             if(userdata.ballType == ball_type):
                 return 'reachedPlay'
             else:
+                userdata.toFind = True
                 return 'notRequest'
         else:
             userdata.toNormal = True
@@ -480,7 +485,6 @@ class normal(smach.State):
         """
 
         smach.State.__init__(self,outcomes=['someTimes','ball','play'],input_keys=['fromTrack'])
-        rospy.Subscriber("command", String, self.getCommand)
 
     def getCommand(self,data):
 
@@ -582,9 +586,11 @@ class normal(smach.State):
 
         self.play = 0
         self.from_track = userdata.fromTrack
+        sub_command = rospy.Subscriber("command", String, self.getCommand)
 
         for count in range(0,count_value):
             if self.play == 1:
+                sub_command.unregister()
                 return 'play'
             if(self.from_track == False):
                 resp = self.object_detector_client()
@@ -598,6 +604,7 @@ class normal(smach.State):
             result = self.target_pos_client(x,y)
             if (result != None):
                 if(result == "play"):
+                    sub_command.unregister()
                     return 'play'
                 elif(result == "ball"):
                     return 'ball'
@@ -619,6 +626,7 @@ def main():
     sm = smach.StateMachine(outcomes=['container_interface'])
     sm.userdata.sm_data = False
     sm.userdata.sm_ball = "ND"
+    sm.userdata.sm_tf = False
 
     # Open the container
     with sm:
@@ -639,12 +647,14 @@ def main():
                                             'reachedPlay':'PLAY',
                                             'notRequest':'FIND'},
                                remapping={'ballType':'sm_ball',
-                                          'toNormal':'sm_data'})
+                                          'toNormal':'sm_data',
+                                          'toFind':'sm_tf'})
         smach.StateMachine.add('FIND', find(), 
                                transitions={'someTimes':'PLAY',
                                             'ball':'TRACK'},
                                remapping={'ballType':'sm_ball',
-                                          'ballTypeFromPlay':'sm_data'})
+                                          'ballTypeFromPlay':'sm_data',
+                                          'fromTrack':'sm_tf'})
         
     # Create and start the introspection server for visualization
     sis = smach_ros.IntrospectionServer('server_name', sm, '/SM_ROOT')
