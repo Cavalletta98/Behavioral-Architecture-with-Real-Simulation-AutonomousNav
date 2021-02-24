@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-    ROS component that implement a ball detector
+    ROS service that implement a ball detector
 """
 
 # Import of libraries
@@ -25,7 +25,7 @@ detected = False
 class image_feature:
 
     """
-        A class used to detect a green ball
+        A class used to detect a colored ball
 
         Attributes
         -----
@@ -38,12 +38,19 @@ class image_feature:
         @param resp_radius: radius of the ball
         @type resp_radius: int
 
+        @param type: color of the ball
+        @type type: string
+
         Methods
         -----
         getCenter():
             Get the center of the ball
         getRadius()
             Get the radius of the ball
+        getType()
+            Get the color of the ball
+        ask_oracle(request)
+            Method used to ask a specific request to the oracle
         callback(ros_data)
             Callback function of subscribed topic. 
             Here images get converted and features detected
@@ -51,9 +58,9 @@ class image_feature:
 
     def __init__(self):
 
-        '''
+        """
             Constuctor. Initialize the node and the attributes, subscribe to topic of the camera
-        '''
+        """
 
         rospy.init_node('image_detector', anonymous=True)
 
@@ -66,42 +73,53 @@ class image_feature:
         ## Radius of the ball
         self.resp_radius = -1
 
+        ## Color of the ball
         self.type = "ND"
 
     def getCenter(self):
 
-        '''
+        """
             Get the center of the ball
 
             @returns: center of the ball
             @rtype: int
-        '''
+        """
 
         return self.resp_center
 
     def getRadius(self):
 
-        '''
+        """
             Get the radius of the ball
 
             @returns: radius of the ball
             @rtype: int
-        '''
+        """
 
         return self.resp_radius
 
     def getType(self):
 
-        '''
-            Get the radius of the ball
+        """
+            Get the color of the ball
 
-            @returns: radius of the ball
-            @rtype: int
-        '''
+            @returns: color of the ball
+            @rtype: string
+        """
 
         return self.type
 
     def ask_oracle(self,request):
+
+        """
+            Method used to ask a specific request to the oracle
+
+            @param request: request message
+            @type request: OracleReq
+
+            @returns: response to the request
+            @rtype: OracleReqResponse
+        """
 
         rospy.wait_for_service('oracle_req')
         try:
@@ -113,10 +131,13 @@ class image_feature:
 
     def callback(self, ros_data):
         
-        '''
+        """
             Callback function for converting the images and
             detecting the features
-        '''
+
+            @param ros_data: image
+            @type ros_data: CompressedImage
+        """
         global detected
 
         if VERBOSE:
@@ -198,8 +219,8 @@ class image_feature:
 class ball_info:
 
     """
-        A class used to represent a service for providing the radius
-        and center of the ball
+        A class used to represent a service for providing the radius,center
+        and color of the ball
 
         Attributes
         -----
@@ -212,16 +233,16 @@ class ball_info:
         Methods
         -----
         handle_object(req):
-            Received a request and reply with the center and radius
-            of the ball        
+            Received a request and reply with the center,radius and color
+            of the ball(the request is empty)
     """
 
     def __init__(self):
 
-        '''
+        """
             Constuctor. Initialize the node and service, create an instance of the class
             image_feature
-        '''
+        """
 
         rospy.init_node('image_detector', anonymous=True)
 
@@ -234,7 +255,7 @@ class ball_info:
     def handle_object(self,req):
 
         """
-            Received a request and reply with the center and radius
+            Received a request and reply with the center,radius and color
             of the ball(the request is empty)
 
             @returns: radius and center of the ball
@@ -248,9 +269,11 @@ class ball_info:
 
 
 def main(args):
-    '''
-        Main function.Starting the nodes
-    '''
+
+    """
+        Main function.Starting the node
+    """
+
     c = ball_info()
     try:
         rospy.spin()

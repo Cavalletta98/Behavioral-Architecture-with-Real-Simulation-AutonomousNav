@@ -15,7 +15,6 @@ import random
 import actionlib
 import roslaunch
 
-
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from sensoring.srv import DetectImage
 from geometry_msgs.msg import Twist
@@ -26,16 +25,25 @@ from knowledge.srv import OracleReq
 from std_msgs.msg import String
 from sensor_msgs.msg import LaserScan
 
+## Path of the explore lite launch file
+path_exp = rospy.get_param("path_exp")
+
 ## Min delay for transition between NORMAL and SLEEP states
 min_transition_normal_sleep = rospy.get_param("min_transition_normal_sleep")
 
 ## Max delay for transition between NORMAL and SLEEP states
 max_transition_normal_sleep = rospy.get_param("max_transition_normal_sleep")
 
-## Min delay for transition between NORMAL and SLEEP states
+## Min delay for transition between FIND and PLAY states
+min_transition_find_play = rospy.get_param("min_transition_find_play")
+
+## Max delay for transition between FIND and PLAY states
+max_transition_find_play = rospy.get_param("max_transition_find_play")
+
+## Min delay for transition between PLAY and NORMAL states
 min_transition_play_normal = rospy.get_param("min_transition_play_normal")
 
-## Max delay for transition between NORMAL and SLEEP states
+## Max delay for transition between PLAY and NORMAL states
 max_transition_play_normal = rospy.get_param("max_transition_play_normal")
 
 ## 2D home position
@@ -44,10 +52,10 @@ home_pos = Point(rospy.get_param("home_pos_x"),rospy.get_param("home_pos_y"),0)
 ## 2D person position
 person_pos = Point(rospy.get_param("person_pos_x"),rospy.get_param("person_pos_y"),0)
 
-## Min delay for SLEEP state
+## Min delay for sleeping
 min_sleep_delay = rospy.get_param("min_sleep_delay")
 
-## Max delay for SLEEP state
+## Max delay for sleeping
 max_sleep_delay = rospy.get_param("max_sleep_delay")
 
 ## x coordinate of the map
@@ -58,15 +66,61 @@ map_y = rospy.get_param("map_y")
 # define state Play
 class play(smach.State):
 
+    """
+        A class used to represent the PLAY behaviour
+        of the robot
+
+        Attributes
+        -----
+        @param count: Variable that represents how many times we perform the PLAY behavior
+        @type count: int
+
+        @param transition_value: Variable that represents the value used to change state to Normal
+        @type transition_value: int
+
+        @param transition: Variable used to change state to Normal
+        @type transition: bool
+
+        @param goTo: Variable used to change state to FIND
+        @type goTo: bool
+
+        Methods
+        -----
+        ask_oracle(request):
+            Method used to ask a specific request to the oracle
+        getCommand(data)
+            Callback method that received the "goTo" command and check if the location is already visited or not
+            If it is already visited, send the robot to the requested room.
+            If it is not visited, set the variable goTo to True in order to change state.
+            When the count is equal to the transition_value, the variable transition is setted to True
+        target_pos_client(x, y)
+            Send a goal to the action server of the robot and waits until it reaches the goal.
+            While it is waiting, if the plan is aborted,it returns None; otherwise it will return
+            the result of the sended goal 
+        execute(userdata)
+            It sends the robot to the person. When the robot is there, waits for a goTo command.
+            After some times it changes state to Normal
+    """
+
     def __init__(self):
         # initialisation function, it should not wait
 
         """
-            Constrcutor. It inizializes the attribute
+            Constrcutor
         """
         smach.State.__init__(self,outcomes=['someTimes','unknow'],output_keys=['ballTypePlay'])     
 
     def ask_oracle(self,request):
+
+        """
+            Method used to ask a specific request to the oracle
+
+            @param request: request message
+            @type request: OracleReq
+
+            @returns: response to the request
+            @rtype: OracleReqResponse
+        """
 
         rospy.wait_for_service('oracle_req')
         try:
@@ -80,8 +134,11 @@ class play(smach.State):
     def getCommand(self,data):
 
         """
-            Callback method that received the "play" command and set the attribute
-            play to 1
+            Callback method that received the "goTo" command and check if the location is already visited or not
+            If it is already visited, send the robot to the requested room.
+            If it is not visited, set the variable goTo to True in order to change state.
+            When the count is equal to the transition_value, the variable transition is setted to True
+
             @param data: command message
             @type data: str
         """
@@ -104,21 +161,23 @@ class play(smach.State):
                 self.goTo = True           
             self.count += 1
             if self.count == self.transition_value:
-                self.transition = 1
+                self.transition = True
 
 
     def target_pos_client(self,x, y):
 
         """
             Send a goal to the action server of the robot and waits until it reaches the goal.
+            While it is waiting, if the plan is aborted,it returns None; otherwise it will return
+            the result of the sended goal 
 
             @param x: x coordinate of the target position
-            @type x: int
+            @type x: float
             @param y: y coordinate of the target position
-            @type y: int
+            @type y: float
 
-            @returns: the position reached by the robot
-            @rtype: Pose
+            @returns: the result of the sended goal or "play"/"ball"/None
+            @rtype: string
 
         """
         client = actionlib.SimpleActionClient('move_base',MoveBaseAction)
@@ -145,14 +204,25 @@ class play(smach.State):
     def execute(self, userdata):
 
         """
-            It publishes the person position and, after the robot reaches the position, it
-            subsribes to "gesture" topic. At the end, it waits for the state transition
+            It sends the robot to the person. When the robot is there, waits for a goTo command.
+            After some times it changes state to Normal
+
             @param userdata: used to pass data between states
             @type userdata: list
+
+            @returns: transition value
+            @rtype: String
         """
+        ## Variable that represents how many times we perform the PLAY behavior
         self.count = 0
+
+        ## Variable that represents the value used to change state to Normal
         self.transition_value = random.randint(min_transition_play_normal,max_transition_play_normal)
-        self.transition = 0
+
+        ## Variable used to change state to Normal
+        self.transition = False
+
+        ## Variable used to change state to Find
         self.goTo = False
 
         # function called when exiting from the node, it can be blacking      
@@ -161,7 +231,7 @@ class play(smach.State):
             pass
         rospy.loginfo("Robot arrived in person position")
         sub_command = rospy.Subscriber("command", String, self.getCommand)
-        while self.transition == 0 and self.goTo == False:
+        while self.transition == False and self.goTo == False:
             pass
         sub_command.unregister()
         if self.goTo == True:
@@ -174,20 +244,22 @@ class play(smach.State):
 class find(smach.State):
 
     """
-        A class used to represent the NORMAL behaviour
+        A class used to represent the FIND behaviour
         of the robot
+
+        Attributes
+        -----
+        @param from_track: Variable that represent if the transition has been done from TRACK state
+        @type from_track: bool
 
         Methods
         -----
         object_detector_client():
             Makes a request to detector server and wait for the response
-        target_pos_client(x,y)
-            Send a goal to the action server of the robot and waits until it reaches the goal.
-            While it is waiting, if there is the ball, it stops the robot and return None
         execute(userdata)
-            It checks if there is the ball, otherwise it will generate a random goal (x and y)
-            for the robot. If there is the ball, it switches to the PLAY state.
-            After some times, it switches to the SLEEP state
+            It launches the EXPLORE LITE package and checks for a ball.
+            If there is a ball, not previously detected, it changes the state to TRACK.
+            After some times ,if no ball is detected, it changes state to PLAY
     """
 
     def __init__(self):
@@ -220,11 +292,11 @@ class find(smach.State):
     def execute(self, userdata):
 
         """
-            It checks if there is the ball, otherwise it will generate a random goal (x and y)
-            for the robot. If there is the ball, it switches to the PLAY state.
-            After some times, it switches to the SLEEP state
+            It launches the EXPLORE LITE package and checks for a ball.
+            If there is a ball, not previously detected, it changes the state to TRACK.
+            After some times ,if no ball is detected, it changes state to PLAY
 
-            @param userdata: used to pass data bejoint_state = tween states
+            @param userdata: used to pass data between states
             @type userdata: list
 
             @returns: transition value
@@ -234,9 +306,11 @@ class find(smach.State):
 
         uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
         roslaunch.configure_logging(uuid)
-        launch = roslaunch.parent.ROSLaunchParent(uuid, ["/home/simone/catkin_ws/src/Behavioral-Architecture-with-Real-Simulation-AutonomousNav/explore/launch/explore.launch"])
+        launch = roslaunch.parent.ROSLaunchParent(uuid, [path_exp])
         launch.start()
         start = rospy.get_time()
+
+        ## Variable that represent if the transition has been done from TRACK state
         self.from_track = userdata.fromTrack
 
         while True:
@@ -251,7 +325,7 @@ class find(smach.State):
                 launch.shutdown()
                 userdata.ballType = userdata.ballTypeFromPlay
                 return 'ball'
-            if ((now-start) >= 60*2):
+            if ((now-start) >= random.randint(min_transition_find_play,max_transition_find_play)):
                 launch.shutdown()
                 return 'someTimes'
                    
@@ -266,6 +340,8 @@ class sleep(smach.State):
         -----
         target_pos_client(x, y):
             Send a goal to the action server of the robot and waits until it reaches the goal.
+            While it is waiting, if the plan is aborted,it returns None; otherwise it will return
+            the result of the sended goal 
         execute(userdata)
             It send the robot to the home position and, after the robot reaches the position,
             sleeps for a random time of seconds. After that change the state to NORMAL
@@ -284,14 +360,16 @@ class sleep(smach.State):
 
         """
             Send a goal to the action server of the robot and waits until it reaches the goal.
+            While it is waiting, if the plan is aborted,it returns None; otherwise it will return
+            the result of the sended goal 
 
             @param x: x coordinate of the target position
-            @type x: int
+            @type x: float
             @param y: y coordinate of the target position
-            @type y: int
+            @type y: float
 
-            @returns: the position reached by the robot
-            @rtype: Pose
+            @returns: the result of the sended goal or "play"/"ball"/None
+            @rtype: string
 
         """
         client = actionlib.SimpleActionClient('move_base',MoveBaseAction)
@@ -341,30 +419,77 @@ class sleep(smach.State):
 # define state Track
 class track(smach.State):
 
+    """
+        A class used to represent the TRACK behaviour
+        of the robot
+
+        Attributes
+        -----
+        @param vel_pub: Publisher object for robot velocities
+        @type vel_pub: Publisher
+
+        @param position: Position of the robot
+        @type position: Point
+
+        @param vel: Velocity of the robot
+        @type vel: Twist
+
+        @param sub_scan: Object that represents the Subscriber to the topic scan
+        @type sub_scan: Subscriber
+
+        Methods
+        -----
+        clbk_odom(msg)
+            Callback function to obtain the odometry information
+            from the robot
+        clbk_laser(msg)
+            Callback function to obtain the laser information
+            in order to perform a better track of the ball
+        ask_oracle(request)
+            Method used to ask a specific request to the oracle
+        object_detector_client():
+            Makes a request to detector server and wait for the response
+        execute(userdata)
+            It start to follow the ball. When it is near the ball, it saves the x and y position.
+            If the ball is the requested one, it goes to PLAY otherwise it goes to FIND.
+            If the transition has been done from NORMAL, it goes to NORMAL state
+    """
+
     def __init__(self):
 
         """
-            Constrcutor
+            Constrcutor. Starts the node, initialize the publisher for the robot velocities and
+            subscribe to the odom topic
         """
 
         smach.State.__init__(self,outcomes=['reached','reachedPlay','notRequest'],input_keys=['ballType'],output_keys=['toNormal','toFind'])
+        ## Publisher object for robot velocities
         self.vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
         rospy.Subscriber('odom', Odometry, self.clbk_odom)    
 
     def clbk_odom(self,msg):
 
-        '''
+        """
             Callback function to obtain the odometry information
             from the robot
 
             @param msg: robot state
             @type msg: Odometry
-        '''
+        """
 
-        # position
+        ## Position of the robot
         self.position = msg.pose.pose.position
 
     def clbk_laser(self,msg):
+
+        """
+            Callback function to obtain the laser information
+            in order to perform a better track of the ball
+
+            @param msg: laser readings
+            @type msg: LaserScan
+        """
+
         if(msg.ranges[0]< 0.5):
             self.vel.linear.z = -0.001
         elif(msg.ranges[719]<0.5):
@@ -375,6 +500,17 @@ class track(smach.State):
 
             
     def ask_oracle(self,request):
+
+        """
+            Method used to ask a specific request to the oracle
+
+            @param request: request message
+            @type request: OracleReq
+
+            @returns: response to the request
+            @rtype: OracleReqResponse
+        """
+
 
         rospy.wait_for_service('oracle_req')
         try:
@@ -405,9 +541,9 @@ class track(smach.State):
     def execute(self, userdata):
 
         """
-            It checks if there is the ball, otherwise it will generate a random goal (x and y)
-            for the robot. If there is the ball, it switches to the PLAY state.
-            After some times, it switches to the SLEEP state
+            It start to follow the ball. When it is near the ball, it saves the x and y position.
+            If the ball is the requested one, it goes to PLAY otherwise it goes to FIND.
+            If the transition has been done from NORMAL, it goes to NORMAL state
 
             @param userdata: used to pass data bejoint_state = tween states
             @type userdata: list
@@ -417,7 +553,10 @@ class track(smach.State):
         """
         rospy.loginfo('Executing state TRACK')
 
+        ## Velocity of the robot
         self.vel = Twist()
+
+        ## Object that represents the Subscriber to the topic scan
         self.sub_scan = rospy.Subscriber('scan', LaserScan, self.clbk_laser)
 
         resp = self.object_detector_client()
@@ -465,8 +604,19 @@ class normal(smach.State):
         A class used to represent the NORMAL behaviour
         of the robot
 
+        Attributes
+        -----
+        @param play: Variable uses to change state to PLAY
+        @type play: bool
+
+        @param from_track: Variable uses to understand if the transition cames from TRACK state
+        @type from_track: bool
+
         Methods
         -----
+        getCommand(data)
+            Callback method that received the "play" command and set the attribute
+            play to true
         object_detector_client():
             Makes a request to detector server and wait for the response
         target_pos_client(x,y)
@@ -474,14 +624,15 @@ class normal(smach.State):
             While it is waiting, if there is the ball, it stops the robot and return None
         execute(userdata)
             It checks if there is the ball, otherwise it will generate a random goal (x and y)
-            for the robot. If there is the ball, it switches to the PLAY state.
+            for the robot. If there is the ball, it switches to the TRACK state. If the command
+            play arrive, it switches to PLAY state.
             After some times, it switches to the SLEEP state
     """
 
     def __init__(self):
 
         """
-            Constrcutor
+            Constructor
         """
 
         smach.State.__init__(self,outcomes=['someTimes','ball','play'],input_keys=['fromTrack'])
@@ -490,19 +641,20 @@ class normal(smach.State):
 
         """
             Callback method that received the "play" command and set the attribute
-            play to 1
+            play to true
+
             @param data: command message
             @type data: str
         """
 
-        self.play = 1
+        self.play = True
 
     def object_detector_client(self):
 
         """
             Makes a request to detector server and wait for the response
 
-            @returns: radius and center of the ball
+            @returns: radius,center and color of the ball
             @rtyper: string
 
         """
@@ -519,15 +671,15 @@ class normal(smach.State):
 
         """
             Send a goal to the action server of the robot and waits until it reaches the goal.
-            While it is waiting, if there is the ball, it stops the robot and return None
+            While it is waiting, if there is the ball or the play command arrive, it stops the robot
 
             @param x: x coordinate of the target position
-            @type x: int
+            @type x: float
             @param y: y coordinate of the target position
-            @type y: int
+            @type y: float
 
-            @returns: the position reached by the robot or None
-            @rtype: Pose
+            @returns: the result of the sended goal or "play"/"ball"/None
+            @rtype: string
 
         """
         client = actionlib.SimpleActionClient('move_base',MoveBaseAction)
@@ -543,10 +695,8 @@ class normal(smach.State):
         # Sends the goal to the action server.
         client.send_goal(goal)
 
-        #client.wait_for_result()
-
         while(client.get_state() != 3):
-            if self.play == 1:
+            if self.play == True:
                 client.cancel_all_goals()
                 return 'play'
             if(client.get_state()== 4):
@@ -569,10 +719,11 @@ class normal(smach.State):
 
         """
             It checks if there is the ball, otherwise it will generate a random goal (x and y)
-            for the robot. If there is the ball, it switches to the PLAY state.
+            for the robot. If there is the ball, it switches to the TRACK state. If the command
+            play arrive, it switches to PLAY state.
             After some times, it switches to the SLEEP state
 
-            @param userdata: used to pass data bejoint_state = tween states
+            @param userdata: used to pass data between states
             @type userdata: list
 
             @returns: transition value
@@ -584,12 +735,15 @@ class normal(smach.State):
         neg_map_x = map_x*-1
         neg_map_y = map_y*-1
 
-        self.play = 0
+        ## Variable uses to change state to PLAY
+        self.play = False
+
+        ## Variable uses to understand if the transition cames from TRACK state
         self.from_track = userdata.fromTrack
         sub_command = rospy.Subscriber("command", String, self.getCommand)
 
         for count in range(0,count_value):
-            if self.play == 1:
+            if self.play == True:
                 sub_command.unregister()
                 return 'play'
             if(self.from_track == False):

@@ -1,16 +1,19 @@
 <launch>
 
+    <!-- Position of the launch file of explore lite (must be define before the execution) -->
+    <param name="path_exp" type="string" value="/home/simone/catkin_ws/src/Behavioral-Architecture-with-Real-Simulation-AutonomousNav/explore/launch/explore.launch" />
+
     <!-- Home position (must be inside the map) -->
     <param name="home_pos_x" type="int" value="-5" />
     <param name="home_pos_y" type="int" value="8" />
 
-    <!-- Min and max delay for moving the ball -->
-    <param name="min_delay_ball" type="double" value="1" />
-    <param name="max_delay_ball" type="double" value="10" />
-
     <!-- Min and max delay for transition between PLAY and NORMAL states -->
     <param name="min_transition_play_normal" type="int" value="1" />
     <param name="max_transition_play_normal" type="int" value="10" />
+
+    <!-- Min and max delay for transition between FIND and PLAY states (they represent seconds)-->
+    <param name="min_transition_find_play" type="int" value="60" />
+    <param name="max_transition_find_play" type="int" value="120" />
 
     <!-- Min and max delay for transition between NORMAL and SLEEP states -->
     <param name="min_transition_normal_sleep" type="int" value="1" />
@@ -20,22 +23,6 @@
     <param name="min_sleep_delay" type="double" value="1" />
     <param name="max_sleep_delay" type="double" value="10" />
 
-    <!-- Min and max delay for mantaining 45° clockwise the head -->
-    <param name="min_clock_head_delay" type="double" value="1" />
-    <param name="max_clock_head_delay" type="double" value="10" />
-
-    <!-- Min and max delay for mantaining 45° counterclockwise the head -->
-    <param name="min_countclock_head_delay" type="double" value="0.1" />
-    <param name="max_countclock_head_delay" type="double" value="1" />
-
-    <!-- Min and max delay for mantaining 0° the head -->
-    <param name="min_head_delay" type="double" value="1" />
-    <param name="max_head_delay" type="double" value="10" />
-
-    <!-- Min and max delay for disappearing the ball -->
-    <param name="min_dis_ball_delay" type="int" value="1" />
-    <param name="max_dis_ball_delay" type="int" value="10" />
-
     <!-- Person position (must be inside the map) -->
     <param name="person_pos_x" type="double" value="-5" />
     <param name="person_pos_y" type="double" value="8" />
@@ -44,13 +31,10 @@
     <param name="map_x" type="int" value="7" />
     <param name="map_y" type="int" value="7" />
 
-    <!-- Launch the simulation and the nodes-->
-    <!--<include file="$(find simulation)/launch/simulation.launch" />-->
-    
+    <!-- Launch the simulation and the nodes--> 
     <node name="image_detector" pkg="sensoring" type="ball_detector.py" respawn="true" output="screen"/> 
     <node name="oracle_server" pkg="knowledge" type="oracle.py" respawn="true" output="screen"/>
     <node name="command_manager_state_machine" pkg="manager" type="command_manager.py" respawn="true" output="screen"/>
     <node name="command" pkg="sensoring" type="command.py" respawn="true"/>
-    
 
 </launch>

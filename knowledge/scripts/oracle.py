@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-    ROS service used to simulate robot motion
+    ROS service that represent the oracle
 """
 
 # Import of libraries
@@ -12,30 +12,129 @@ from knowledge.srv import OracleReq,OracleReqResponse
 
 class Location:
 
+    """
+        A class used to represent the room in the house
+
+        Attributes
+        -----
+        @param name: name of the room
+        @type name: string
+
+        @param visited: whether it has been visited or not
+        @type visited: bool
+
+        @param position: x and y position
+        @type position: Point
+
+        Methods
+        -----
+        getName()):
+            Get the name of the room
+        getVisited()
+            Get if it was visited or not
+        getPosition()
+            Get the x and y position
+        setVisited()
+            Set that the room is visited
+        setPosition()
+            Set the x and y position
+    """
+
     def __init__(self,name,visited,position):
+
+        """
+            Constuctor. Initialize the attributes with the given one
+
+            @param name: name of the room
+            @type name: string
+
+            @param visited: whether it has been visited or not
+            @type visited: bool
+
+            @param position: x and y position
+            @type position: Point
+        """
 
         self.name = name
         self.visited = visited
         self.position = position
     
     def getName(self):
+
+        """
+            Get the name of the room
+
+            @returns: name of the room
+            @rtype: string
+        """
+
         return self.name
 
     def getVisited(self):
+
+        """
+            Get if it was visited or not
+
+            @returns: if it was visited or not
+            @rtype: bool
+        """
+
         return self.visited
 
     def getPosition(self):
+
+        """
+            Get the x and y position
+
+            @returns: x and y position
+            @rtype: Point
+        """
+
         return self.position
 
     def setVisited(self,visited):
+
+        """
+            Set that the room is visited
+
+            @param visited: room is visited
+            @type visited: bool
+        """
+
         self.visited = visited
 
     def setPosition(self,position):
+
+        """
+            Set the x and y position
+
+            @param position: x and y position
+            @type position: pOINT
+        """
+
         self.position = position
     
 class Oracle:
 
+    """
+        A class used to represent the oracle
+
+        Attributes
+        -----
+        @param house: map the balls to the rooms
+        @type house: Map
+
+        Methods
+        -----
+        handle_req(self,req)
+            Handle the different requests
+    """
+
     def __init__(self):
+
+        """
+            Constuctor. Create some rooms and initialize the map. Start the service
+        """
 
         entrance = Location("entrance",False,Point())
         closet = Location("closet",False,Point())
@@ -59,6 +158,16 @@ class Oracle:
         s = rospy.Service('oracle_req', OracleReq, self.handle_req)
 
     def handle_req(self,req):
+
+        """
+            Handle the different requests
+
+            @param request: request message
+            @type request: OracleReq
+
+            @returns: response to the request
+            @rtype: OracleReqResponse
+        """
 
         resp = OracleReqResponse()
 
