@@ -16,11 +16,11 @@ def command_generator():
     rooms = ["entrance","closet","living_room","kitchen","bathroom","bedroom"]
     pub = rospy.Publisher('command', String, queue_size=1)
     rospy.init_node('command_node', anonymous=True)
-    rate = rospy.Rate(5) # 5hz
+    rate = rospy.Rate(rospy.get_param("freq_command")) # 5hz
 
     while not rospy.is_shutdown():
         pub.publish("play")
-        rospy.sleep(random.uniform(1,10))
+        rospy.sleep(random.uniform(rospy.get_param("min_delay_command"),rospy.get_param("max_delay_command")))
         room = rooms[random.randint(0,5)]
         pub.publish("goTo+"+room)
         rate.sleep()

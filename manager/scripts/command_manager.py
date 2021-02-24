@@ -108,7 +108,11 @@ class play(smach.State):
         """
             Constrcutor
         """
-        smach.State.__init__(self,outcomes=['someTimes','unknow'],output_keys=['ballTypePlay'])     
+        smach.State.__init__(self,outcomes=['someTimes','unknow'],output_keys=['ballTypePlay'])
+        ## Variable that represents how many times we perform the PLAY behavior
+        self.count = 0
+        ## Variable that represents the value used to change state to Normal
+        self.transition_value = random.randint(min_transition_play_normal,max_transition_play_normal)
 
     def ask_oracle(self,request):
 
@@ -142,11 +146,18 @@ class play(smach.State):
             @param data: command message
             @type data: str
         """
-        if(data.data != "play"):
+        if (self.count == self.transition_value):
+                self.transition = True
+                self.count = 0
+                self.transition_value = random.randint(min_transition_play_normal,max_transition_play_normal)
+
+        if(data.data != "play"):   
+            self.count += 1
             location = data.data.split('+')[1]
+            rospy.loginfo("Requested location: %s",location)
             resp = self.ask_oracle("isVisited "+location)
             resp = resp.location.split()
-            self.ball_type = resp[1]
+            self.ball_type = resp[1]           
             if(resp[0] == "True"):
                 resp = self.ask_oracle("getPos "+self.ball_type)
                 position = resp.location.split()
@@ -156,14 +167,10 @@ class play(smach.State):
                 time.sleep(random.uniform(min_sleep_delay,max_sleep_delay))
                 while(self.target_pos_client(person_pos.x,person_pos.y) == None):
                     pass
-                rospy.loginfo("Robot arrived in person position")
+                rospy.loginfo("Robot arrived in person position")         
             else:
                 self.goTo = True           
-            self.count += 1
-            if self.count == self.transition_value:
-                self.transition = True
-
-
+             
     def target_pos_client(self,x, y):
 
         """
@@ -212,12 +219,9 @@ class play(smach.State):
 
             @returns: transition value
             @rtype: String
-        """
-        ## Variable that represents how many times we perform the PLAY behavior
-        self.count = 0
+        """       
 
-        ## Variable that represents the value used to change state to Normal
-        self.transition_value = random.randint(min_transition_play_normal,max_transition_play_normal)
+        
 
         ## Variable used to change state to Normal
         self.transition = False
@@ -312,6 +316,7 @@ class find(smach.State):
 
         ## Variable that represent if the transition has been done from TRACK state
         self.from_track = userdata.fromTrack
+        transition_time = random.randint(min_transition_find_play,max_transition_find_play)
 
         while True:
             resp = self.object_detector_client()
@@ -325,7 +330,7 @@ class find(smach.State):
                 launch.shutdown()
                 userdata.ballType = userdata.ballTypeFromPlay
                 return 'ball'
-            if ((now-start) >= random.randint(min_transition_find_play,max_transition_find_play)):
+            if ((now-start) >= transition_time):
                 launch.shutdown()
                 return 'someTimes'
                    
@@ -580,13 +585,15 @@ class track(smach.State):
                 elif(radius < 10):
                     self.vel.angular.z = 0
                     self.vel.linear.x = 0.09
+            else:
+                self.vel.angular.z = 0.5
             
             self.vel_pub.publish(self.vel)
                               
         self.ask_oracle("setPos "+ball_type+" "+str(self.position.x)+" "+str(self.position.y))
-        self.sub_scan.unregister()
-        rospy.loginfo(userdata.ballType)
+        self.sub_scan.unregister()      
         if(userdata.ballType != "ND"):
+            rospy.loginfo("Requested ball: %s",userdata.ballType)
             if(userdata.ballType == ball_type):
                 return 'reachedPlay'
             else:

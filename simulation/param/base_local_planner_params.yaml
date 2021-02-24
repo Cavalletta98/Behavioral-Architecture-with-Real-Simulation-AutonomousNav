@@ -13,7 +13,7 @@ TrajectoryPlannerROS:
 
 # Goal Tolerance Parameters
   yaw_goal_tolerance: 3.14
-  xy_goal_tolerance: 0.3
+  xy_goal_tolerance: 1
 
 # Forward Simulation Parameters
   sim_time: 2.0
