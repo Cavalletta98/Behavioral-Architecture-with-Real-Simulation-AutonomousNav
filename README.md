@@ -113,7 +113,7 @@ roslaunch launch_file.launch
 
 # Working hypothesis and environment
 The robot is a pet that interact with a human via the play command followed by goTo+location. The simulated enviroment is a house with 6 rooms: Entrance, Closet, Living room, Kitchen, Bathroom, Bedroom. The robot has 5 behaviours: PLAY,NORMAL,SLEEP,TRACK,FIND. The word "someTimes" is inteded as number of cycles for which it is executed a piece of code. The only transition that is implemented as elapsed time is the FIND to PLAY one. The joint associated with the laser has been positioned so as not to be resting on the chassis but "floating" as there are problems in the correct use of the laser if the latter is positioned on the chassis.
-Since the context of the application is to move in a house, it is acceptable to have a tolerance of 1 meter, regarding the position along x and y, when the robot reaches a goal. This allows you to speed up the reception of the goal achievement message
+Since the context of the application is to move in a house, it is acceptable to have a tolerance of 1 meter, regarding the position along x and y, when the robot reaches a goal. This allows you to speed up the reception of the goal achievement message. The orientation of the robot when it has to reach a position is fixed at -1.57
 
 # System's features
 - Specify different dimensions of the map
