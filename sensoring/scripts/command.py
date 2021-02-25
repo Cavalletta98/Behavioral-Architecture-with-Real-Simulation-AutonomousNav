@@ -16,7 +16,7 @@ def command_generator():
     rooms = ["entrance","closet","living_room","kitchen","bathroom","bedroom"]
     pub = rospy.Publisher('command', String, queue_size=1)
     rospy.init_node('command_node', anonymous=True)
-    rate = rospy.Rate(rospy.get_param("freq_command")) # 5hz
+    rate = rospy.Rate(rospy.get_param("freq_command"))
 
     while not rospy.is_shutdown():
         pub.publish("play")

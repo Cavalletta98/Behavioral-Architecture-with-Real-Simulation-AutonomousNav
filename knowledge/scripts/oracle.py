@@ -55,8 +55,13 @@ class Location:
             @type position: Point
         """
 
+        ## Name of the room
         self.name = name
+
+        ## whether it has been visited or not
         self.visited = visited
+
+        ## x and y position
         self.position = position
     
     def getName(self):
@@ -143,6 +148,7 @@ class Oracle:
         bathroom = Location("bathroom",False,Point())
         bedroom = Location("bedroom",False,Point())
 
+        ## Map the balls to the rooms
         self.house = {
             "blue": entrance,
             "red": closet,
@@ -198,6 +204,7 @@ class Oracle:
 
 if __name__ == "__main__":
 
+    ## Istance of class Oracle
     o = Oracle()
 
     try:

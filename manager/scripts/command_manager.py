@@ -157,7 +157,10 @@ class play(smach.State):
             rospy.loginfo("Requested location: %s",location)
             resp = self.ask_oracle("isVisited "+location)
             resp = resp.location.split()
-            self.ball_type = resp[1]           
+
+            ## Color of the ball
+            self.ball_type = resp[1] 
+                      
             if(resp[0] == "True"):
                 resp = self.ask_oracle("getPos "+self.ball_type)
                 position = resp.location.split()

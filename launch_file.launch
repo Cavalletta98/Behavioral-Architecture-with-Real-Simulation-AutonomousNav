@@ -12,8 +12,8 @@
     <param name="max_transition_play_normal" type="int" value="10" />
 
     <!-- Min and max delay for sending the play command -->
-    <param name="min_delay_command" type="int" value="1" />
-    <param name="max_delay_command" type="int" value="10" />
+    <param name="min_delay_command" type="double" value="1" />
+    <param name="max_delay_command" type="double" value="10" />
 
      <!-- Frequency of the command loop (play follow by goTo+location) -->
     <param name="freq_command" type="int" value="1" />

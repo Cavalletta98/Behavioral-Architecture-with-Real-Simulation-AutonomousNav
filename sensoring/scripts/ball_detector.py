@@ -143,7 +143,7 @@ class image_feature:
         if VERBOSE:
             print ('received image of type: "%s"' % ros_data.format)
 
-        #### direct conversion to CV2 ####
+        #direct conversion to CV2
         np_arr = np.fromstring(ros_data.data, np.uint8)
         image_np = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)  # OpenCV >= 3.0:
 
@@ -169,7 +169,6 @@ class image_feature:
                 cnts = imutils.grab_contours(cnts)
 
                 if len(cnts) > 0:
-                    #rospy.loginfo(key)
                     resp = self.ask_oracle("prevDetect "+key)
                     if(resp.location == "False"):
                         self.type = key

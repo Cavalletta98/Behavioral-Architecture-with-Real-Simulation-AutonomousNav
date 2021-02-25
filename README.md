@@ -1,4 +1,4 @@
-# Behavioral-Architecture-with-Real-Simulation-AutonomousNav
+# Behavioral Architecture with Real Simulation AutonomousNav
 ROS architecture for a robot moving into a simulated house. The robot has 5 behaviors:
 - Play
 - Sleep
@@ -6,7 +6,7 @@ ROS architecture for a robot moving into a simulated house. The robot has 5 beha
 - Find
 - Track
 
-The user can interact with the robot by sendi a play command follow by a goTo+room
+The user can interact with the robot by sending a play command follow by a goTo+room
 # Software architecture and states diagrams
 ## Software architecture 
 The architercture is composed by 5 components: 
@@ -64,6 +64,9 @@ The parameters are:
 - `min_sleep_delay,max_sleep_delay`: define the min and max delay for the SLEEP state (double)
 - `min_transition_find_play,max_transition_find_play`: define the min and max delay to trasit between FIND and PLAY (integer,it is expressed as seconds)
 - `min_sleep_delay,max_sleep_delay`: define the min and max delay for sleeping (double)
+- `freq_command`: frequency of the command loop (play follow by goTo+location) (integer)
+- `min_delay_command,max_delay_command`: define the min and max delay for the Min and max delay for sending the play command (double)
+
 
 # Packages and files
 There are 5 packages:
@@ -99,7 +102,7 @@ source devel/setup.bash
 cd src/Behavioral-Architecture-with-Real-Simulation-AutonomousNav
 roslaunch simulation simulation.launch
 ```
-In the other terminal
+When the simulation is ready, in the other terminal
 ```
 cd <your_workspace>
 catkin_make
@@ -109,37 +112,39 @@ roslaunch launch_file.launch
 ```
 
 # Working hypothesis and environment
-The robot is a pet that interact with a human who moves the ball into an a simulated arena. The arena is a 7x7 grid. Target position of the robot and the ball belong to the arena. The robot has 3 behaviours: PLAY,NORMAL,SLEEP. The PLAY behaviour will start only if the robot sees the ball. The ball is green and is very big with respect to the robot in order to detect it. The home position can be initialize before starting the simulation and cannot be changed during the execution. The word "someTimes" is inteded as number of cycles for which it is executed a piece of code. The ball has no collisions.The ball is considered stationary when the robot is close to it and is stopped.
+The robot is a pet that interact with a human via the play command followed by goTo+location. The simulated enviroment is a house with 6 rooms: Entrance, Closet, Living room, Kitchen, Bathroom, Bedroom. The robot has 5 behaviours: PLAY,NORMAL,SLEEP,TRACK,FIND. The word "someTimes" is inteded as number of cycles for which it is executed a piece of code. The only transition that is implemented as elapsed time is the FIND to PLAY one. The joint associated with the laser has been positioned so as not to be resting on the chassis but "floating" as there are problems in the correct use of the laser if the latter is positioned on the chassis.
+Since the context of the application is to move in a house, it is acceptable to have a tolerance of 1 meter, regarding the position along x and y, when the robot reaches a goal. This allows you to speed up the reception of the goal achievement message
 
 # System's features
-- Specify different dimensions of the arena
+- Specify different dimensions of the map
 - It is possibile to define different delays for the simulation
 - It is possibile to define different position of the "home" inside the arena before start the simulation
 - It is possible to visualize the states transition in the shell
 - The robot will notify if it will reach the target position and it is possibile to visualize it in the shell (the position that the robot has reached)
-- The robot can perceives the ball even if it is moving in the NORMAL state
 - It is possibile to see the camera of the robot in a separated window with the possibility to see a circle around the detected ball
-- It is possible to make the ball disappear simply by moving it under the ground
 - All the delays are random values between the defined ranges
-- The robot ignores the ball when it is in the SLEEP state
-- The robot can follow the ball well when it starts to exit the robot's field of view quickly enough thanks to the choice of a good gain for angular velocity
-- The robot starts to rotate, for a certain period of time, to look for the ball when it loses it before passing to the NORMAL state
+- The robot is able to move autonomously, given a goal position, in the environment without colliding with obstacles
+- The robot is able to recognize different colored balls
+- When the robot sees a ball not previously seen, it will always and only apply the mask corresponding to the color of the recognized ball, avoiding wasting time applying all of them
+- The robot can autonomously direct to a user-defined location if the latter has already been visited. If the location has not been visited, it is able to discover the environment on its own to try to find it
+- The knowledge used in the application is managed by a single node in order to avoid inconsistencies
 
 # System's limitations
-- Slight wheelies of the robot when it passes from NORMAL to PLAY state
-- Shaking of the camera due to the joint of the head
-- Very slight wheelies of the robot when it starts to move torward a position during NORMAL behavior
-- When the ball moves close to the robot but it is stationary, the robot moves its head
-- Robot shaking while following the ball
-- Since the PLAY-NORMAL transition is implemented as a number of cycles, if the range is small (e.g. 1-10), the transition will be fast (use suggested range or different values)
+- If the goal is behind the robot, the robot continues straight until it encounters an obstacle and then rotates towards the goal
+- The robot does not move immediately when there is the first transition to the FIND state
+- The robot sometimes rears during the TRACK state
+- The robot, after having explored the entire environment without finding the corresponding ball, gets stuck if the transition between FIND and PLAY is of long duration
+- The positions generated randomly during the NORMAL state can be outside the environment
+- The robot crashes into the wall during the TRACK state if the latter is approached in a certain way causing the chassis to lock into the wall
 
 # Possible technical improvements
-- Fine tune the PID values for the head joint
-- Adopt an incremental gain solution in order to avoid robot wheelies and allow very fast ball following
-- Keeping this robot geometry, adopt a control solution that allows you to follow the ball without shaking
-- Add collision properties to the ball
-- Adopt a different mechanism to understand if the ball is stationary or not
-- Implement the transition mechanism between PLAY and NORMAL with a timer
+- Implement a ball track using the laser values "intelligently"
+- Use another environment exploration technique
+- Use the information of the generated map to be able to generate positions inside it, preventing the robot from not reaching them
+- Finding the right parameters to move base in order to have a good compromise between all robot behaviors
+- Use an incremental gain to guide the robot towards the ball to avoid, in particular, that the transition to the TRACK state generates a strong push in the robot causing it, at times, to wheelie
+- Create an ontology instead of a simple class that represents the entire knowledge of the application
+
 
 # Author and contact
 [Simone Voto](https://github.com/Cavalletta98) - simone.voto98@gmail.com
